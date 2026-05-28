@@ -34,8 +34,20 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 		}
 
 		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
+	} else if bencodedString[0] == 'i' {
+		var eIndex int
+		
+		for i := 1; i < len(bencodedString); i++ {
+			if bencodedString[i] == 'e' {
+				eIndex = i
+				break
+			}
+		}
+
+		intStr := bencodedString[1:eIndex]
+		return strconv.Atoi(intStr)
 	} else {
-		return "", fmt.Errorf("Only strings are supported at the moment")
+		return "", fmt.Errorf("bencode type not supported")
 	}
 }
 
