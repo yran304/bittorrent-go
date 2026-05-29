@@ -1,34 +1,34 @@
-[![progress-banner](https://backend.codecrafters.io/progress/bittorrent/b4887560-fc3b-4fcb-b088-6d4859c6b429)](https://app.codecrafters.io/users/yran304?r=2qF)
+# BitTorrent in Go
 
-This is a starting point for Go solutions to the
-["Build Your Own BitTorrent" Challenge](https://app.codecrafters.io/courses/bittorrent/overview).
+This repository contains my in-progress implementation of a BitTorrent client in Go.
 
-In this challenge, you’ll build a BitTorrent client that's capable of parsing a
-.torrent file and downloading a file from a peer. Along the way, we’ll learn
-about how torrent files are structured, HTTP trackers, BitTorrent’s Peer
-Protocol, pipelining and more.
+It is being built as part of the [CodeCrafters "Build Your Own BitTorrent" challenge](https://app.codecrafters.io/courses/bittorrent/overview), but this repo is mainly where I track my own work and progress publicly.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Status
 
-# Passing the first stage
+This project is not complete yet.
 
-The entry point for your BitTorrent implementation is in `app/main.go`. Study
-and uncomment the relevant code, then run the command below to execute the tests
-on our servers:
+Current progress:
+- Basic bencode decoding is underway
+- String, integer, and list decoding are implemented
+- More BitTorrent features still need to be added
+
+## Goal
+
+The long-term goal is to build a working BitTorrent client that can:
+- parse `.torrent` files
+- talk to trackers
+- connect to peers
+- download file data
+
+## Run locally
+
+If you have Go installed, you can run the program with:
 
 ```sh
-codecrafters submit
+./your_program.sh
 ```
 
-Time to move on to the next stage!
+## Notes
 
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `go (1.26)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `app/main.go`.
-1. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+This is an active learning project, so the codebase will continue to change as more protocol features are implemented.
