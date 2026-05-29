@@ -16,8 +16,25 @@ var _ = json.Marshal
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, error) {
-	if unicode.IsDigit(rune(bencodedString[0])) {
-		var firstColonIndex int
+	decoded, consumed, err := decodeValue(bencodedString)
+	if err != nil {
+		return nil, err
+	}
+
+	if consumed != len(bencodedString) {
+		return nil, fmt.Errorf("invalid bencode: trailing data")
+	}
+
+	return decoded, nil
+}
+
+func decodeValue(bencodedString string) (interface{}, int, error) {
+	if len(bencodedString) == 0 {
+		return nil, 0, fmt.Errorf("invalid bencode: empty input")
+	}
+
+	if unicode.IsDigit(rune(bencodedString[0])) { // to decode a string
+		var firstColonIndex = -1
 
 		for i := 0; i < len(bencodedString); i++ {
 			if bencodedString[i] == ':' {
@@ -26,17 +43,26 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 			}
 		}
 
-		lengthStr := bencodedString[:firstColonIndex]
-
-		length, err := strconv.Atoi(lengthStr)
-		if err != nil {
-			return "", err
+		if firstColonIndex == -1 {
+			return nil, 0, fmt.Errorf("invalid bencode string")
 		}
 
-		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
-	} else if bencodedString[0] == 'i' {
-		var eIndex int
-		
+		lengthStr := bencodedString[:firstColonIndex]
+		length, err := strconv.Atoi(lengthStr)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		start := firstColonIndex + 1
+		end := start + length
+		if end > len(bencodedString) {
+			return nil, 0, fmt.Errorf("invalid bencode string length")
+		}
+
+		return bencodedString[start:end], end, nil
+	} else if bencodedString[0] == 'i' { // to decode an integer
+		var eIndex = -1
+
 		for i := 1; i < len(bencodedString); i++ {
 			if bencodedString[i] == 'e' {
 				eIndex = i
@@ -44,11 +70,39 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 			}
 		}
 
+		if eIndex == -1 {
+			return nil, 0, fmt.Errorf("invalid bencode integer")
+		}
+
 		intStr := bencodedString[1:eIndex]
-		return strconv.Atoi(intStr)
-	} else {
-		return "", fmt.Errorf("bencode type not supported")
+		value, err := strconv.Atoi(intStr)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return value, eIndex + 1, nil
+	} else if bencodedString[0] == 'l' { // to decode a list
+		var values []interface{}
+		currentIndex := 1
+
+		for currentIndex < len(bencodedString) && bencodedString[currentIndex] != 'e' {
+			value, consumed, err := decodeValue(bencodedString[currentIndex:])
+			if err != nil {
+				return nil, 0, err
+			}
+
+			values = append(values, value)
+			currentIndex += consumed
+		}
+
+		if currentIndex >= len(bencodedString) || bencodedString[currentIndex] != 'e' {
+			return nil, 0, fmt.Errorf("invalid bencode list")
+		}
+
+		return values, currentIndex + 1, nil
 	}
+
+	return nil, 0, fmt.Errorf("bencode type not supported")
 }
 
 func main() {
@@ -61,13 +115,13 @@ func main() {
 		// TODO: Uncomment the code below to pass the first stage
 		//
 		bencodedValue := os.Args[2]
-		
+
 		decoded, err := decodeBencode(bencodedValue)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		
+
 		jsonOutput, _ := json.Marshal(decoded)
 		fmt.Println(string(jsonOutput))
 	} else {
