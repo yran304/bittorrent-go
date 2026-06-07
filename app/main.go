@@ -100,6 +100,43 @@ func decodeValue(bencodedString string) (interface{}, int, error) {
 		}
 
 		return values, currentIndex + 1, nil
+	} else if bencodedString[0] == 'd' {
+		dict := make(map[string]interface{})
+		previousKey := ""
+		currentIndex := 1
+
+		for currentIndex < len(bencodedString) && bencodedString[currentIndex] != 'e' {
+			keyValue, keyConsumed, err := decodeValue(bencodedString[currentIndex:])
+			if err != nil {
+				return nil, 0, err
+			}
+
+			key, ok := keyValue.(string)
+			if !ok {
+				return nil, 0, fmt.Errorf("invalid bencode dictionary key")
+			}
+
+			if previousKey != "" && key <= previousKey {
+				return nil, 0, fmt.Errorf("invalid bencode dictionary: keys not in order")
+			}
+
+			currentIndex += keyConsumed
+
+			value, valueConsumed, err := decodeValue(bencodedString[currentIndex:])
+			if err != nil {
+				return nil, 0, err
+			}
+
+			dict[key] = value
+			currentIndex += valueConsumed
+			previousKey = key
+		}
+
+		if currentIndex >= len(bencodedString) || bencodedString[currentIndex] != 'e' {
+			return nil, 0, fmt.Errorf("invalid bencode dictionary")
+		}
+
+		return dict, currentIndex + 1, nil
 	}
 
 	return nil, 0, fmt.Errorf("bencode type not supported")

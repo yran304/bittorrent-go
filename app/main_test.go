@@ -38,6 +38,24 @@ func TestDecodeBencode(t *testing.T) {
 			want:  []interface{}{"spam", []interface{}{"a", "b"}},
 		},
 		{
+			name:  "dictionary",
+			input: "d3:cow3:moo4:spam4:eggse",
+			want: map[string]interface{}{
+				"cow":  "moo",
+				"spam": "eggs",
+			},
+		},
+		{
+			name:  "nested dictionary",
+			input: "d4:listl3:one3:twoe4:nestd3:fooi42eee",
+			want: map[string]interface{}{
+				"list": []interface{}{"one", "two"},
+				"nest": map[string]interface{}{
+					"foo": 42,
+				},
+			},
+		},
+		{
 			name:    "trailing data",
 			input:   "5:hellojunk",
 			wantErr: true,
@@ -45,6 +63,11 @@ func TestDecodeBencode(t *testing.T) {
 		{
 			name:    "unterminated list",
 			input:   "l5:helloi52e",
+			wantErr: true,
+		},
+		{
+			name:    "dictionary keys out of order",
+			input:   "d4:spam4:eggs3:cow3:mooe",
 			wantErr: true,
 		},
 	}

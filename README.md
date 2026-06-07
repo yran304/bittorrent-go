@@ -10,7 +10,8 @@ This project is not complete yet.
 
 Current progress:
 - Basic bencode decoding is underway
-- String, integer, and list decoding are implemented
+- String, integer, list, and dictionary decoding are implemented
+- Local Go tests were added for decoder validation, including dictionary cases
 - More BitTorrent features still need to be added
 
 ## Goal
@@ -27,6 +28,27 @@ If you have Go installed, you can run the program with:
 
 ```sh
 ./your_program.sh
+```
+
+You can also manually test the decode command:
+
+```sh
+go run ./app decode "l5:helloi52ee"
+go run ./app decode "d3:cow3:moo4:spam4:eggse"
+```
+
+## Run tests
+
+Local tests are available so the decoder can be validated without relying on Codecrafters' hosted tests.
+
+```sh
+go test ./app
+```
+
+To run only the decoder test suite:
+
+```sh
+go test ./app -run TestDecodeBencode
 ```
 
 ## Notes
