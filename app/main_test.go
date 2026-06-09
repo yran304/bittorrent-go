@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -95,7 +97,7 @@ func TestDecodeBencode(t *testing.T) {
 }
 
 func TestDecodeValueConsumedBytes(t *testing.T) {
-	got, consumed, err := decodeValue("5:helloi52e")
+	got, consumed, _, err := decodeValue("5:helloi52e")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -115,16 +117,16 @@ func TestInfoCommandDataExtraction(t *testing.T) {
 		t.Fatalf("failed to read sample torrent: %v", err)
 	}
 
-	decoded, err := decodeBencode(string(data))
+	torrent, infoRaw, err := decodeTorrentFile(string(data))
 	if err != nil {
 		t.Fatalf("failed to decode sample torrent: %v", err)
 	}
 
-	torrent, ok := decoded.(map[string]interface{})
-	if !ok {
-		t.Fatalf("decoded torrent has type %T, want map[string]interface{}", decoded)
+	if infoRaw == "" {
+		t.Fatal("expected raw info dictionary to be captured")
 	}
 
+	infoHash := sha1.Sum([]byte(infoRaw))
 	announce, ok := torrent["announce"].(string)
 	if !ok {
 		t.Fatalf("announce has type %T, want string", torrent["announce"])
@@ -146,5 +148,9 @@ func TestInfoCommandDataExtraction(t *testing.T) {
 
 	if length != 92063 {
 		t.Fatalf("length = %d, want 92063", length)
+	}
+
+	if got := fmt.Sprintf("%x", infoHash); got != "d69f91e6b2ae4c542468d1073a71d4ea13879a7f" {
+		t.Fatalf("info hash = %s, want %s", got, "d69f91e6b2ae4c542468d1073a71d4ea13879a7f")
 	}
 }
