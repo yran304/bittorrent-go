@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -105,5 +106,45 @@ func TestDecodeValueConsumedBytes(t *testing.T) {
 
 	if consumed != 7 {
 		t.Fatalf("consumed = %d, want 7", consumed)
+	}
+}
+
+func TestInfoCommandDataExtraction(t *testing.T) {
+	data, err := os.ReadFile("../sample.torrent")
+	if err != nil {
+		t.Fatalf("failed to read sample torrent: %v", err)
+	}
+
+	decoded, err := decodeBencode(string(data))
+	if err != nil {
+		t.Fatalf("failed to decode sample torrent: %v", err)
+	}
+
+	torrent, ok := decoded.(map[string]interface{})
+	if !ok {
+		t.Fatalf("decoded torrent has type %T, want map[string]interface{}", decoded)
+	}
+
+	announce, ok := torrent["announce"].(string)
+	if !ok {
+		t.Fatalf("announce has type %T, want string", torrent["announce"])
+	}
+
+	if announce != "http://bittorrent-test-tracker.codecrafters.io/announce" {
+		t.Fatalf("announce = %q, want %q", announce, "http://bittorrent-test-tracker.codecrafters.io/announce")
+	}
+
+	info, ok := torrent["info"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("info has type %T, want map[string]interface{}", torrent["info"])
+	}
+
+	length, ok := info["length"].(int)
+	if !ok {
+		t.Fatalf("length has type %T, want int", info["length"])
+	}
+
+	if length != 92063 {
+		t.Fatalf("length = %d, want 92063", length)
 	}
 }

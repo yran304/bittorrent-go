@@ -9,8 +9,9 @@ It is being built as part of the [CodeCrafters "Build Your Own BitTorrent" chall
 This project is not complete yet.
 
 Current progress:
-- Basic bencode decoding is underway
+- Recursive bencode decoding is implemented
 - String, integer, list, and dictionary decoding are implemented
+- The `info` command can parse a `.torrent` file and extract the tracker URL and file length
 - Local Go tests were added for decoder validation, including dictionary cases
 - More BitTorrent features still need to be added
 
@@ -35,6 +36,12 @@ You can also manually test the decode command:
 ```sh
 go run ./app decode "l5:helloi52ee"
 go run ./app decode "d3:cow3:moo4:spam4:eggse"
+```
+
+To inspect a torrent file with the `info` command:
+
+```sh
+go run ./app info sample.torrent
 ```
 
 ## Run tests
