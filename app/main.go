@@ -50,6 +50,7 @@ func main() {
 			fmt.Println("invalid torrent file: missing announce URL")
 			return
 		}
+		fmt.Println("Tracker URL:", announce)
 
 		info, ok := torrent["info"].(map[string]interface{})
 		if !ok {
@@ -62,17 +63,36 @@ func main() {
 			fmt.Println("invalid torrent file: missing length in info dictionary")
 			return
 		}
+		fmt.Println("Length:", length)
 
 		if infoRaw == "" {
 			fmt.Println("invalid torrent file: missing raw info dictionary")
 			return
 		}
-
 		infoHash := sha1.Sum([]byte(infoRaw))
-
-		fmt.Println("Tracker URL:", announce)
-		fmt.Println("Length:", length)
 		fmt.Printf("Info Hash: %x\n", infoHash)
+
+		pieceLength, ok := info["piece length"].(int)
+		if !ok {
+			fmt.Println("invalid torrent file: missing piece length in info dictionary")
+			return
+		}
+		fmt.Println("Piece Length:", pieceLength)
+
+		pieces, ok := info["pieces"].(string)
+		if !ok {
+			fmt.Println("invalid torrent file: missing pieces in info dictionary")
+			return
+		}
+		piecesBytes := []byte(pieces)
+		if len(piecesBytes)%20 != 0 {
+			fmt.Println("invalid torrent file: pieces length is not a multiple of 20")
+			return
+		}
+		fmt.Println("Piece Hashes:")
+		for i := 0; i < len(piecesBytes); i += 20 {
+			fmt.Printf("%x\n", piecesBytes[i:i+20])
+		}
 
 	default:
 		fmt.Println("Unknown command: " + command)

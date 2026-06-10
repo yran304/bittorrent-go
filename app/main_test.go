@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"testing"
@@ -152,5 +153,65 @@ func TestInfoCommandDataExtraction(t *testing.T) {
 
 	if got := fmt.Sprintf("%x", infoHash); got != "d69f91e6b2ae4c542468d1073a71d4ea13879a7f" {
 		t.Fatalf("info hash = %s, want %s", got, "d69f91e6b2ae4c542468d1073a71d4ea13879a7f")
+	}
+
+	pieceLength, ok := info["piece length"].(int)
+	if !ok {
+		t.Fatalf("piece length has type %T, want int", info["piece length"])
+	}
+
+	if pieceLength != 32768 {
+		t.Fatalf("piece length = %d, want 32768", pieceLength)
+	}
+
+	pieces, ok := info["pieces"].(string)
+	if !ok {
+		t.Fatalf("pieces has type %T, want string", info["pieces"])
+	}
+
+	if len([]byte(pieces)) != 60 {
+		t.Fatalf("pieces byte length = %d, want 60", len([]byte(pieces)))
+	}
+}
+
+func TestInfoCommandOutput(t *testing.T) {
+	originalArgs := os.Args
+	originalStdout := os.Stdout
+	defer func() {
+		os.Args = originalArgs
+		os.Stdout = originalStdout
+	}()
+
+	readPipe, writePipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+
+	os.Args = []string{"your_program.sh", "info", "../sample.torrent"}
+	os.Stdout = writePipe
+
+	main()
+
+	if err := writePipe.Close(); err != nil {
+		t.Fatalf("failed to close stdout writer: %v", err)
+	}
+
+	output, err := io.ReadAll(readPipe)
+	if err != nil {
+		t.Fatalf("failed to read stdout: %v", err)
+	}
+
+	expected := "" +
+		"Tracker URL: http://bittorrent-test-tracker.codecrafters.io/announce\n" +
+		"Length: 92063\n" +
+		"Info Hash: d69f91e6b2ae4c542468d1073a71d4ea13879a7f\n" +
+		"Piece Length: 32768\n" +
+		"Piece Hashes:\n" +
+		"e876f67a2a8886e8f36b136726c30fa29703022d\n" +
+		"6e2275e604a0766656736e81ff10b55204ad8d35\n" +
+		"f00d937a0213df1982bc8d097227ad9e909acc17\n"
+
+	if string(output) != expected {
+		t.Fatalf("info command output = %q, want %q", string(output), expected)
 	}
 }
