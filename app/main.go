@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,8 +18,6 @@ func main() {
 
 	switch command {
 	case "decode":
-		// TODO: Uncomment the code below to pass the first stage
-		//
 		bencodedValue := os.Args[2]
 
 		decoded, err := decodeBencode(bencodedValue)
@@ -33,67 +30,30 @@ func main() {
 		fmt.Println(string(jsonOutput))
 	case "info":
 		target := os.Args[2]
-		data, err := os.ReadFile(target)
+		meta, err := readTorrentMeta(target)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		torrent, infoRaw, err := decodeTorrentFile(string(data))
+		printTorrentInfo(meta)
+	case "peers":
+		target := os.Args[2]
+		meta, err := readTorrentMeta(target)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		announce, ok := torrent["announce"].(string)
-		if !ok {
-			fmt.Println("invalid torrent file: missing announce URL")
-			return
-		}
-		fmt.Println("Tracker URL:", announce)
-
-		info, ok := torrent["info"].(map[string]interface{})
-		if !ok {
-			fmt.Println("invalid torrent file: missing info dictionary")
+		peerAddrs, err := fetchTrackerPeers(meta)
+		if err != nil {
+			fmt.Println(err)
 			return
 		}
 
-		length, ok := info["length"].(int)
-		if !ok {
-			fmt.Println("invalid torrent file: missing length in info dictionary")
-			return
+		for _, addr := range peerAddrs {
+			fmt.Println(addr)
 		}
-		fmt.Println("Length:", length)
-
-		if infoRaw == "" {
-			fmt.Println("invalid torrent file: missing raw info dictionary")
-			return
-		}
-		infoHash := sha1.Sum([]byte(infoRaw))
-		fmt.Printf("Info Hash: %x\n", infoHash)
-
-		pieceLength, ok := info["piece length"].(int)
-		if !ok {
-			fmt.Println("invalid torrent file: missing piece length in info dictionary")
-			return
-		}
-		fmt.Println("Piece Length:", pieceLength)
-
-		pieces, ok := info["pieces"].(string)
-		if !ok {
-			fmt.Println("invalid torrent file: missing pieces in info dictionary")
-			return
-		}
-		piecesBytes := []byte(pieces)
-		if len(piecesBytes)%20 != 0 {
-			fmt.Println("invalid torrent file: pieces length is not a multiple of 20")
-			return
-		}
-		fmt.Println("Piece Hashes:")
-		for i := 0; i < len(piecesBytes); i += 20 {
-			fmt.Printf("%x\n", piecesBytes[i:i+20])
-		}
-
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)

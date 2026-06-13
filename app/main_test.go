@@ -1,9 +1,9 @@
 package main
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"reflect"
 	"testing"
@@ -70,9 +70,12 @@ func TestDecodeBencode(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "dictionary keys out of order",
-			input:   "d4:spam4:eggs3:cow3:mooe",
-			wantErr: true,
+			name:  "dictionary keys out of order",
+			input: "d4:spam4:eggs3:cow3:mooe",
+			want: map[string]interface{}{
+				"spam": "eggs",
+				"cow":  "moo",
+			},
 		},
 	}
 
@@ -98,7 +101,7 @@ func TestDecodeBencode(t *testing.T) {
 }
 
 func TestDecodeValueConsumedBytes(t *testing.T) {
-	got, consumed, _, err := decodeValue("5:helloi52e")
+	got, consumed, _, err := decodeValue("5:helloi52e", decodeOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,64 +116,41 @@ func TestDecodeValueConsumedBytes(t *testing.T) {
 }
 
 func TestInfoCommandDataExtraction(t *testing.T) {
-	data, err := os.ReadFile("../sample.torrent")
+	meta, err := readTorrentMeta("../sample.torrent")
 	if err != nil {
-		t.Fatalf("failed to read sample torrent: %v", err)
+		t.Fatalf("failed to read torrent metadata: %v", err)
 	}
 
-	torrent, infoRaw, err := decodeTorrentFile(string(data))
-	if err != nil {
-		t.Fatalf("failed to decode sample torrent: %v", err)
+	if meta.TrackerURL != "http://bittorrent-test-tracker.codecrafters.io/announce" {
+		t.Fatalf("tracker URL = %q, want %q", meta.TrackerURL, "http://bittorrent-test-tracker.codecrafters.io/announce")
 	}
 
-	if infoRaw == "" {
-		t.Fatal("expected raw info dictionary to be captured")
+	if meta.Length != 92063 {
+		t.Fatalf("length = %d, want 92063", meta.Length)
 	}
 
-	infoHash := sha1.Sum([]byte(infoRaw))
-	announce, ok := torrent["announce"].(string)
-	if !ok {
-		t.Fatalf("announce has type %T, want string", torrent["announce"])
-	}
-
-	if announce != "http://bittorrent-test-tracker.codecrafters.io/announce" {
-		t.Fatalf("announce = %q, want %q", announce, "http://bittorrent-test-tracker.codecrafters.io/announce")
-	}
-
-	info, ok := torrent["info"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("info has type %T, want map[string]interface{}", torrent["info"])
-	}
-
-	length, ok := info["length"].(int)
-	if !ok {
-		t.Fatalf("length has type %T, want int", info["length"])
-	}
-
-	if length != 92063 {
-		t.Fatalf("length = %d, want 92063", length)
-	}
-
-	if got := fmt.Sprintf("%x", infoHash); got != "d69f91e6b2ae4c542468d1073a71d4ea13879a7f" {
+	if got := fmt.Sprintf("%x", meta.InfoHash); got != "d69f91e6b2ae4c542468d1073a71d4ea13879a7f" {
 		t.Fatalf("info hash = %s, want %s", got, "d69f91e6b2ae4c542468d1073a71d4ea13879a7f")
 	}
 
-	pieceLength, ok := info["piece length"].(int)
-	if !ok {
-		t.Fatalf("piece length has type %T, want int", info["piece length"])
+	if meta.PieceLength != 32768 {
+		t.Fatalf("piece length = %d, want 32768", meta.PieceLength)
 	}
 
-	if pieceLength != 32768 {
-		t.Fatalf("piece length = %d, want 32768", pieceLength)
+	if len(meta.PieceHashes) != 3 {
+		t.Fatalf("piece hash count = %d, want 3", len(meta.PieceHashes))
 	}
 
-	pieces, ok := info["pieces"].(string)
-	if !ok {
-		t.Fatalf("pieces has type %T, want string", info["pieces"])
+	wantHashes := []string{
+		"e876f67a2a8886e8f36b136726c30fa29703022d",
+		"6e2275e604a0766656736e81ff10b55204ad8d35",
+		"f00d937a0213df1982bc8d097227ad9e909acc17",
 	}
 
-	if len([]byte(pieces)) != 60 {
-		t.Fatalf("pieces byte length = %d, want 60", len([]byte(pieces)))
+	for i, want := range wantHashes {
+		if got := fmt.Sprintf("%x", meta.PieceHashes[i]); got != want {
+			t.Fatalf("piece hash %d = %s, want %s", i, got, want)
+		}
 	}
 }
 
@@ -213,5 +193,112 @@ func TestInfoCommandOutput(t *testing.T) {
 
 	if string(output) != expected {
 		t.Fatalf("info command output = %q, want %q", string(output), expected)
+	}
+}
+
+func TestDecodeTorrentFileRejectsOutOfOrderKeys(t *testing.T) {
+	_, _, err := decodeTorrentFile("d4:spam4:eggs3:cow3:mooe")
+	if err == nil {
+		t.Fatal("expected decodeTorrentFile to reject out-of-order dictionary keys")
+	}
+}
+
+func TestBuildTrackerURL(t *testing.T) {
+	meta, err := readTorrentMeta("../sample.torrent")
+	if err != nil {
+		t.Fatalf("failed to read torrent metadata: %v", err)
+	}
+
+	trackerURL, err := buildTrackerURL(meta)
+	if err != nil {
+		t.Fatalf("failed to build tracker URL: %v", err)
+	}
+
+	parsedURL, err := url.Parse(trackerURL)
+	if err != nil {
+		t.Fatalf("failed to parse tracker URL: %v", err)
+	}
+
+	query := parsedURL.Query()
+
+	if got := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.Path; got != meta.TrackerURL {
+		t.Fatalf("base tracker URL = %q, want %q", got, meta.TrackerURL)
+	}
+
+	if got := query.Get("peer_id"); got != defaultPeerID {
+		t.Fatalf("peer_id = %q, want %q", got, defaultPeerID)
+	}
+
+	if got := query.Get("port"); got != "6881" {
+		t.Fatalf("port = %q, want %q", got, "6881")
+	}
+
+	if got := query.Get("uploaded"); got != "0" {
+		t.Fatalf("uploaded = %q, want %q", got, "0")
+	}
+
+	if got := query.Get("downloaded"); got != "0" {
+		t.Fatalf("downloaded = %q, want %q", got, "0")
+	}
+
+	if got := query.Get("left"); got != "92063" {
+		t.Fatalf("left = %q, want %q", got, "92063")
+	}
+
+	if got := query.Get("compact"); got != "1" {
+		t.Fatalf("compact = %q, want %q", got, "1")
+	}
+
+	if got := query.Get("info_hash"); got != string(meta.InfoHash[:]) {
+		t.Fatalf("info_hash bytes do not match the raw 20-byte hash")
+	}
+}
+
+func TestParseCompactPeers(t *testing.T) {
+	peersBytes := []byte{
+		165, 232, 41, 73, 201, 100,
+		165, 232, 38, 164, 201, 37,
+		165, 232, 35, 114, 201, 20,
+	}
+
+	got, err := parseCompactPeers(peersBytes)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"165.232.41.73:51556",
+		"165.232.38.164:51493",
+		"165.232.35.114:51476",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseCompactPeers() = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseCompactPeersRejectsInvalidLength(t *testing.T) {
+	_, err := parseCompactPeers([]byte{1, 2, 3, 4, 5})
+	if err == nil {
+		t.Fatal("expected parseCompactPeers to reject non-6-byte-aligned data")
+	}
+}
+
+func TestParseTrackerPeers(t *testing.T) {
+	body := []byte("d8:intervali1800e5:peers18:\xa5\xe8)I\xc9d\xa5\xe8&\xa4\xc9%\xa5\xe8#r\xc9\x14e")
+
+	got, err := parseTrackerPeers(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"165.232.41.73:51556",
+		"165.232.38.164:51493",
+		"165.232.35.114:51476",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseTrackerPeers() = %#v, want %#v", got, want)
 	}
 }

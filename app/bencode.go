@@ -6,11 +6,15 @@ import (
 	"unicode"
 )
 
+type decodeOptions struct {
+	enforceKeyOrder bool
+}
+
 // Example:
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, error) {
-	decoded, consumed, _, err := decodeValue(bencodedString)
+	decoded, consumed, _, err := decodeValue(bencodedString, decodeOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +27,9 @@ func decodeBencode(bencodedString string) (interface{}, error) {
 }
 
 func decodeTorrentFile(bencodedString string) (map[string]interface{}, string, error) {
-	decoded, consumed, infoRaw, err := decodeValue(bencodedString)
+	decoded, consumed, infoRaw, err := decodeValue(bencodedString, decodeOptions{
+		enforceKeyOrder: true,
+	})
 	if err != nil {
 		return nil, "", err
 	}
@@ -40,7 +46,7 @@ func decodeTorrentFile(bencodedString string) (map[string]interface{}, string, e
 	return torrent, infoRaw, nil
 }
 
-func decodeValue(bencodedString string) (interface{}, int, string, error) {
+func decodeValue(bencodedString string, options decodeOptions) (interface{}, int, string, error) {
 	if len(bencodedString) == 0 {
 		return nil, 0, "", fmt.Errorf("invalid bencode: empty input")
 	}
@@ -102,7 +108,7 @@ func decodeValue(bencodedString string) (interface{}, int, string, error) {
 		currentIndex := 1
 
 		for currentIndex < len(bencodedString) && bencodedString[currentIndex] != 'e' {
-			value, consumed, _, err := decodeValue(bencodedString[currentIndex:])
+			value, consumed, _, err := decodeValue(bencodedString[currentIndex:], options)
 			if err != nil {
 				return nil, 0, "", err
 			}
@@ -125,7 +131,7 @@ func decodeValue(bencodedString string) (interface{}, int, string, error) {
 		currentIndex := 1
 
 		for currentIndex < len(bencodedString) && bencodedString[currentIndex] != 'e' {
-			keyValue, keyConsumed, _, err := decodeValue(bencodedString[currentIndex:])
+			keyValue, keyConsumed, _, err := decodeValue(bencodedString[currentIndex:], options)
 			if err != nil {
 				return nil, 0, "", err
 			}
@@ -135,14 +141,14 @@ func decodeValue(bencodedString string) (interface{}, int, string, error) {
 				return nil, 0, "", fmt.Errorf("invalid bencode dictionary key")
 			}
 
-			if previousKey != "" && key <= previousKey {
+			if options.enforceKeyOrder && previousKey != "" && key <= previousKey {
 				return nil, 0, "", fmt.Errorf("invalid bencode dictionary: keys not in order")
 			}
 
 			currentIndex += keyConsumed
 			valueStart := currentIndex
 
-			value, valueConsumed, nestedInfoRaw, err := decodeValue(bencodedString[currentIndex:])
+			value, valueConsumed, nestedInfoRaw, err := decodeValue(bencodedString[currentIndex:], options)
 			if err != nil {
 				return nil, 0, "", err
 			}
