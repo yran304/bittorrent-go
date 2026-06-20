@@ -96,7 +96,7 @@ func parseTrackerPeers(body []byte) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid tracker response: expected a dictionary")
 	}
-	fmt.Printf("%#v\n", trackerData)
+	// fmt.Printf("%#v\n", trackerData) for debugging
 	peers, ok := trackerData["peers"].(string)
 	if !ok {
 		return nil, fmt.Errorf("tracker response missing peers")

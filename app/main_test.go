@@ -302,3 +302,71 @@ func TestParseTrackerPeers(t *testing.T) {
 		t.Fatalf("parseTrackerPeers() = %#v, want %#v", got, want)
 	}
 }
+
+func TestBuildHandshake(t *testing.T) {
+	infoHash := [20]byte{
+		0xd6, 0x9f, 0x91, 0xe6, 0xb2, 0xae, 0x4c, 0x54, 0x24, 0x68,
+		0xd1, 0x07, 0x3a, 0x71, 0xd4, 0xea, 0x13, 0x87, 0x9a, 0x7f,
+	}
+	localPeerID := [20]byte{
+		0x01, 0x02, 0x03, 0x04, 0x05,
+		0x06, 0x07, 0x08, 0x09, 0x0a,
+		0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+		0x10, 0x11, 0x12, 0x13, 0x14,
+	}
+
+	handshake := buildHandshake(infoHash, localPeerID)
+
+	if len(handshake) != 68 {
+		t.Fatalf("handshake length = %d, want 68", len(handshake))
+	}
+
+	if handshake[0] != 19 {
+		t.Fatalf("protocol length byte = %d, want 19", handshake[0])
+	}
+
+	if got := string(handshake[1:20]); got != bittorrentProtocol {
+		t.Fatalf("protocol string = %q, want %q", got, bittorrentProtocol)
+	}
+
+	if got := handshake[20:28]; !reflect.DeepEqual(got, make([]byte, 8)) {
+		t.Fatalf("reserved bytes = %v, want 8 zero bytes", got)
+	}
+
+	if got := handshake[28:48]; !reflect.DeepEqual(got, infoHash[:]) {
+		t.Fatal("info hash bytes are in the wrong position")
+	}
+
+	if got := handshake[48:68]; !reflect.DeepEqual(got, localPeerID[:]) {
+		t.Fatal("peer id bytes are in the wrong position")
+	}
+}
+
+func TestParseHandshakeResponse(t *testing.T) {
+	expectedInfoHash := [20]byte{
+		0xd6, 0x9f, 0x91, 0xe6, 0xb2, 0xae, 0x4c, 0x54, 0x24, 0x68,
+		0xd1, 0x07, 0x3a, 0x71, 0xd4, 0xea, 0x13, 0x87, 0x9a, 0x7f,
+	}
+	remotePeerID := [20]byte{
+		0x01, 0x02, 0x03, 0x04, 0x05,
+		0x06, 0x07, 0x08, 0x09, 0x0a,
+		0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+		0x10, 0x11, 0x12, 0x13, 0x14,
+	}
+
+	resp := make([]byte, 0, 68)
+	resp = append(resp, byte(len(bittorrentProtocol)))
+	resp = append(resp, []byte(bittorrentProtocol)...)
+	resp = append(resp, make([]byte, 8)...)
+	resp = append(resp, expectedInfoHash[:]...)
+	resp = append(resp, remotePeerID[:]...)
+
+	gotRemotePeerID, err := parseHandshakeResponse(resp, expectedInfoHash)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotRemotePeerID != remotePeerID {
+		t.Fatalf("peer ID = %x, want %x", gotRemotePeerID, remotePeerID)
+	}
+}

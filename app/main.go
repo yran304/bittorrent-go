@@ -54,6 +54,23 @@ func main() {
 		for _, addr := range peerAddrs {
 			fmt.Println(addr)
 		}
+	case "handshake":
+		target := os.Args[2]
+		meta, err := readTorrentMeta(target)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		peerAddr := os.Args[3]
+		remotePeerID, err := performHandshake(meta.InfoHash, peerAddr)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Peer ID: %x\n", remotePeerID)
+
 	default:
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
