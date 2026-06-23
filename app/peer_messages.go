@@ -56,7 +56,7 @@ func waitForBitfield(conn net.Conn) ([]byte, error) {
 	return bitfieldMsg.Payload, nil
 }
 
-func hasPiece(bitfield []byte, pieceIndex int) bool {
+func hasPiece(bitfield []byte, pieceIndex int) bool { // since in current challenge, all peers have all blocks, this func is not useful at the moment
 	byteIndex := pieceIndex / 8
 	bitIndex := 7 - (pieceIndex % 8)
 
@@ -113,66 +113,15 @@ func buildRequestMsg(index, begin, length int) []byte {
 	return msg
 }
 
-func requestBlocks(conn net.Conn, pieceIndex, pieceLength int) error {
-	blockSize := 16 * 1024
-
-	for begin := 0; begin < pieceLength; begin += blockSize {
-		blockLength := blockSize
-		remaining := pieceLength - begin
-		if remaining < blockSize {
-			blockLength = remaining
-		}
-
-		msg := buildRequestMsg(pieceIndex, begin, blockLength)
-		n, err := conn.Write(msg)
-		if err != nil {
-			return fmt.Errorf("failed to request block from peer: %w", err)
-		}
-		if n != len(msg) {
-			return fmt.Errorf("failed to send full request message")
-		}
+func requestBlock(conn net.Conn, pieceIndex, begin, length int) error {
+	msg := buildRequestMsg(pieceIndex, begin, length)
+	n, err := conn.Write(msg)
+	if err != nil {
+		return fmt.Errorf("failed to request block from peer: %w", err)
 	}
+	if n != len(msg) {
+		return fmt.Errorf("failed to send full request message")
+	}
+
 	return nil
-}
-
-func receiveBlocks(conn net.Conn, pieceIndex, pieceLength int) ([]byte, error) {
-	blockSize := 16 * 1024
-	pieceData := make([]byte, pieceLength)
-
-	totalBlocks := (pieceLength + blockSize - 1) / blockSize
-
-	for i := 0; i < totalBlocks; i++ {
-		msg, err := readPeerMessage(conn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read piece message: %w", err)
-		}
-
-		if msg.ID != 7 {
-			return nil, fmt.Errorf("expected piece message (id 7), got %d", msg.ID)
-		}
-
-		if len(msg.Payload) < 8 {
-			return nil, fmt.Errorf("invalid piece payload: too short")
-		}
-
-		receivedIndex := int(binary.BigEndian.Uint32(msg.Payload[0:4]))
-		begin := int(binary.BigEndian.Uint32(msg.Payload[4:8]))
-		block := msg.Payload[8:]
-
-		if receivedIndex != pieceIndex {
-			return nil, fmt.Errorf("received piece index %d, expected %d", receivedIndex, pieceIndex)
-		}
-
-		if begin < 0 || begin >= pieceLength {
-			return nil, fmt.Errorf("invalid block begin offset %d", begin)
-		}
-
-		if begin+len(block) > pieceLength {
-			return nil, fmt.Errorf("block exceeds piece bounds")
-		}
-
-		copy(pieceData[begin:], block)
-	}
-
-	return pieceData, nil
 }

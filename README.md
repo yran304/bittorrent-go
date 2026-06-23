@@ -14,7 +14,14 @@ Current progress:
 - Torrent file parsing captures the raw bencoded `info` dictionary for hashing
 - The `info` command can print:
   tracker URL, file length, info hash, piece length, and piece hashes
-- Local Go tests cover decoder behavior and the expected `info` command output
+- Tracker requests are implemented, including compact peer list parsing
+- The `peers` command can fetch and print peer addresses from a tracker
+- Peer handshakes are implemented over TCP
+- The `handshake` command can connect to a peer and print the remote peer ID
+- Single-piece downloads are implemented
+- The `download_piece` command can download one piece, verify its SHA-1 hash, and write it to disk
+- Piece downloads currently use a small pipelined request window
+- Local Go tests cover decoder behavior, torrent metadata extraction, tracker parsing, and handshake helpers
 - More BitTorrent features still need to be added
 
 ## Goal
@@ -24,6 +31,7 @@ The long-term goal is to build a working BitTorrent client that can:
 - talk to trackers
 - connect to peers
 - download file data
+- eventually download full files across multiple pieces
 
 ## Run locally
 
@@ -59,6 +67,32 @@ e876f67a2a8886e8f36b136726c30fa29703022d
 f00d937a0213df1982bc8d097227ad9e909acc17
 ```
 
+To fetch peers from the tracker:
+
+```sh
+go run ./app peers sample.torrent
+```
+
+To perform a peer handshake:
+
+```sh
+go run ./app handshake sample.torrent 165.232.41.73:51556
+```
+
+Example output:
+
+```text
+Peer ID: 0102030405060708090a0b0c0d0e0f1011121314
+```
+
+To download a single piece to disk:
+
+```sh
+go run ./app download_piece -o /tmp/test-piece sample.torrent 0
+```
+
+This writes the downloaded piece bytes to the path passed after `-o`.
+
 ## Run tests
 
 Local tests are available so the decoder can be validated without relying on Codecrafters' hosted tests.
@@ -79,6 +113,17 @@ To run only the `info` command checks:
 go test ./app -run TestInfoCommand
 ```
 
+To run tracker and handshake related tests:
+
+```sh
+go test ./app -run 'TestBuildTrackerURL|TestParseCompactPeers|TestParseTrackerPeers|TestBuildHandshake|TestParseHandshakeResponse'
+```
+
 ## Notes
 
 This is an active learning project, so the codebase will continue to change as more protocol features are implemented.
+
+Current limitations:
+- `download_piece` currently downloads from the first peer returned by the tracker
+- The client downloads one piece at a time
+- Full multi-piece file assembly has not been added yet

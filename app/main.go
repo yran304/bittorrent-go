@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -74,89 +72,22 @@ func main() {
 
 		fmt.Printf("Peer ID: %x\n", remotePeerID)
 	case "download_piece":
-		target := os.Args[4]
-		meta, err := readTorrentMeta(target)
-		if err != nil {
-			fmt.Println(err)
+		if os.Args[2] != "-o" {
+			fmt.Println("expected -o flag")
 			return
 		}
 
-		peerAddrs, err := fetchTrackerPeers(meta)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		var peerAddr string
-		if len(peerAddrs) == 0 {
-			fmt.Println("did not find any peers")
-			return
-		}
-		peerAddr = peerAddrs[0]
-
-		conn, _, err := connectAndHandshake(meta.InfoHash, peerAddr)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer conn.Close()
-
+		outputPath := os.Args[3]
+		torrentPath := os.Args[4]
 		pieceIndex, err := strconv.Atoi(os.Args[5])
 		if err != nil {
 			fmt.Println("invalid piece index:", err)
 			return
 		}
 
-		pieceLength, err := getPieceLength(meta, pieceIndex) // the last piece could be shorter than meta.PieceLength
+		err = downloadPieceToFile(torrentPath, pieceIndex, outputPath)
 		if err != nil {
 			fmt.Println(err)
-			return
-		}
-
-		_, err = waitForBitfield(conn)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		err = sendInterested(conn)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		err = waitForUnchoke(conn)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		err = requestBlocks(conn, pieceIndex, pieceLength)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		pieceData, err := receiveBlocks(conn, pieceIndex, pieceLength)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		receivedPieceHash := sha1.Sum(pieceData)
-		expectedHash := meta.PieceHashes[pieceIndex]
-		if !bytes.Equal(receivedPieceHash[:], expectedHash) {
-			fmt.Println("piece hash mismatch")
-			return
-		}
-
-		outputPath := os.Args[3]
-		if os.Args[2] != "-o" {
-			fmt.Println("expected -o flag")
-			return
-		}
-		err = os.WriteFile(outputPath, pieceData, 0644)
-		if err != nil {
-			fmt.Println("failed to write piece to file:", err)
 			return
 		}
 
