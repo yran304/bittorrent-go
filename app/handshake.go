@@ -53,40 +53,55 @@ func parseHandshakeResponse(resp []byte, expectedInfoHash [20]byte) ([20]byte, e
 	return remotePeerID, nil
 }
 
-func performHandshake(infoHash [20]byte, peerAddr string) ([20]byte, error) {
+func connectAndHandshake(infoHash [20]byte, peerAddr string) (net.Conn, [20]byte, error) {
 	var remotePeerID [20]byte
 
 	localPeerID, err := generatePeerID()
 	if err != nil {
-		return remotePeerID, fmt.Errorf("failed to generate local peer ID: %w", err)
+		return nil, remotePeerID, fmt.Errorf("failed to generate local peer ID: %w", err)
 	}
 
 	handshakeMsg := buildHandshake(infoHash, localPeerID)
 
 	conn, err := net.Dial("tcp", peerAddr)
 	if err != nil {
-		return remotePeerID, fmt.Errorf("failed to connect to peer: %w", err)
+		return nil, remotePeerID, fmt.Errorf("failed to connect to peer: %w", err)
 	}
-	defer conn.Close()
 
 	n, err := conn.Write(handshakeMsg)
 	if err != nil {
-		return remotePeerID, fmt.Errorf("failed to send handshake to peer: %w", err)
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to send handshake to peer: %w", err)
 	}
 	if n != len(handshakeMsg) {
-		return remotePeerID, fmt.Errorf("failed to send full handshake")
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to send full handshake")
 	}
 
 	resp := make([]byte, 68)
 	_, err = io.ReadFull(conn, resp)
 	if err != nil {
-		return remotePeerID, fmt.Errorf("failed to read handshake response: %w", err)
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to read handshake response: %w", err)
 	}
 
 	remotePeerID, err = parseHandshakeResponse(resp, infoHash)
 	if err != nil {
-		return remotePeerID, fmt.Errorf("failed to parse handshake response: %w", err)
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to parse handshake response: %w", err)
 	}
+
+	return conn, remotePeerID, nil
+}
+
+func performHandshake(infoHash [20]byte, peerAddr string) ([20]byte, error) {
+	var remotePeerID [20]byte
+
+	conn, remotePeerID, err := connectAndHandshake(infoHash, peerAddr)
+	if err != nil {
+		return remotePeerID, err
+	}
+	defer conn.Close()
 
 	return remotePeerID, nil
 }

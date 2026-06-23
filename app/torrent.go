@@ -91,3 +91,18 @@ func printTorrentInfo(meta torrentMeta) {
 		fmt.Printf("%x\n", pieceHash)
 	}
 }
+
+func getPieceLength(meta torrentMeta, pieceIndex int) (int, error) {
+	totalPieces := len(meta.PieceHashes)
+
+	if pieceIndex < 0 || pieceIndex >= totalPieces {
+		return 0, fmt.Errorf("invalid piece index %d", pieceIndex)
+	}
+
+	if pieceIndex < totalPieces-1 {
+		return meta.PieceLength, nil
+	}
+	// only last piece could be shorter, so we can't use meta.PieceLength
+	lastPieceLength := meta.Length - (pieceIndex * meta.PieceLength)
+	return lastPieceLength, nil
+}
