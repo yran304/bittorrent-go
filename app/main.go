@@ -90,6 +90,19 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+	case "download":
+		if os.Args[2] != "-o" {
+			fmt.Println("expected -o flag")
+			return
+		}
+
+		outputPath := os.Args[3]
+		torrentPath := os.Args[4]
+		err := downloadFileToPath(torrentPath, outputPath)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
 	default:
 		fmt.Println("Unknown command: " + command)

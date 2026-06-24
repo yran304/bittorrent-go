@@ -20,6 +20,9 @@ Current progress:
 - The `handshake` command can connect to a peer and print the remote peer ID
 - Single-piece downloads are implemented
 - The `download_piece` command can download one piece, verify its SHA-1 hash, and write it to disk
+- Full-file downloads are implemented
+- The `download` command can download all pieces, verify each piece hash, assemble the file, and write it to disk
+- Multi-peer downloading is implemented with worker-style piece scheduling
 - Piece downloads currently use a small pipelined request window
 - Local Go tests cover decoder behavior, torrent metadata extraction, tracker parsing, and handshake helpers
 - More BitTorrent features still need to be added
@@ -31,7 +34,8 @@ The long-term goal is to build a working BitTorrent client that can:
 - talk to trackers
 - connect to peers
 - download file data
-- eventually download full files across multiple pieces
+- download complete files across multiple pieces
+- continue improving peer coordination and protocol coverage
 
 ## Run locally
 
@@ -93,6 +97,14 @@ go run ./app download_piece -o /tmp/test-piece sample.torrent 0
 
 This writes the downloaded piece bytes to the path passed after `-o`.
 
+To download the full file to disk:
+
+```sh
+go run ./app download -o /tmp/test.txt sample.torrent
+```
+
+This downloads all pieces, verifies each piece hash, reassembles the file in memory, and writes the completed file to the path passed after `-o`.
+
 ## Run tests
 
 Local tests are available so the decoder can be validated without relying on Codecrafters' hosted tests.
@@ -124,6 +136,6 @@ go test ./app -run 'TestBuildTrackerURL|TestParseCompactPeers|TestParseTrackerPe
 This is an active learning project, so the codebase will continue to change as more protocol features are implemented.
 
 Current limitations:
-- `download_piece` currently downloads from the first peer returned by the tracker
-- The client downloads one piece at a time
-- Full multi-piece file assembly has not been added yet
+- `download_piece` is still useful as a simpler single-piece debugging path
+- Multi-peer downloading is in place, but retry/requeue behavior still needs hardening for failure cases
+- More protocol features, including magnet link support, still need to be added
