@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	maxPeerWorkers = 5
+	maxPeerWorkers  = 5
+	maxPieceRetries = 3
 )
 
 type pieceResult struct {
@@ -82,24 +83,38 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 		return nil, fmt.Errorf("did not find any peers")
 	}
 
-	workerCount := maxPeerWorkers
-	if workerCount > len(peerAddrs) {
-		workerCount = len(peerAddrs)
+	workerLimit := maxPeerWorkers
+	if workerLimit > len(peerAddrs) {
+		workerLimit = len(peerAddrs)
 	}
-	if workerCount > len(meta.PieceHashes) {
-		workerCount = len(meta.PieceHashes)
+	if workerLimit > len(meta.PieceHashes) {
+		workerLimit = len(meta.PieceHashes)
 	}
 
 	fileData := make([]byte, meta.Length)
 	jobs := make(chan int, len(meta.PieceHashes))
 	results := make(chan pieceResult, len(meta.PieceHashes))
+	workerDone := make(chan error, workerLimit)
+	nextPeerIndex := 0
+	activeWorkers := 0
 
-	for i := 0; i < workerCount; i++ {
-		peerAddr := peerAddrs[i]
+	startNextWorker := func() bool {
+		if nextPeerIndex >= len(peerAddrs) {
+			return false
+		}
 
+		peerAddr := peerAddrs[nextPeerIndex]
+		nextPeerIndex++
+		activeWorkers++
 		go func(peerAddr string) {
+			var workerErr error
+			defer func() {
+				workerDone <- workerErr
+			}()
+
 			conn, bitfield, err := preparePeerConnection(meta, peerAddr)
 			if err != nil {
+				workerErr = err
 				return
 			}
 			defer conn.Close()
@@ -111,23 +126,66 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 					data:  pieceData,
 					err:   err,
 				}
+				if err != nil {
+					workerErr = err
+					return
+				}
 			}
 		}(peerAddr)
+
+		return true
+	}
+
+	for activeWorkers < workerLimit && startNextWorker() {
 	}
 
 	for pieceIndex := 0; pieceIndex < len(meta.PieceHashes); pieceIndex++ {
 		jobs <- pieceIndex
 	}
-	close(jobs)
 
-	for i := 0; i < len(meta.PieceHashes); i++ {
-		result := <-results
-		if result.err != nil {
-			return nil, result.err
+	completedPieces := 0
+	pieceRetries := make([]int, len(meta.PieceHashes))
+	pieceCompleted := make([]bool, len(meta.PieceHashes))
+	var lastErr error
+	defer close(jobs)
+
+	for completedPieces < len(meta.PieceHashes) {
+		select {
+		case result := <-results:
+			if pieceCompleted[result.index] {
+				continue
+			}
+
+			if result.err != nil {
+				lastErr = result.err
+				pieceRetries[result.index]++
+				if pieceRetries[result.index] > maxPieceRetries {
+					return nil, fmt.Errorf("piece %d failed after %d retries: %w", result.index, maxPieceRetries, result.err)
+				}
+
+				jobs <- result.index
+				continue
+			}
+
+			begin := result.index * meta.PieceLength
+			copy(fileData[begin:], result.data)
+			pieceCompleted[result.index] = true
+			completedPieces++
+
+		case err := <-workerDone:
+			activeWorkers--
+			if err != nil {
+				lastErr = err
+			}
+			for activeWorkers < workerLimit && completedPieces < len(meta.PieceHashes) && startNextWorker() {
+			}
+			if activeWorkers == 0 && completedPieces < len(meta.PieceHashes) {
+				if lastErr != nil {
+					return nil, fmt.Errorf("all peer workers stopped before completing the download: %w", lastErr)
+				}
+				return nil, fmt.Errorf("all peer workers stopped before completing the download")
+			}
 		}
-
-		begin := result.index * meta.PieceLength
-		copy(fileData[begin:], result.data)
 	}
 
 	return fileData, nil

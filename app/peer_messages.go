@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
 
 type peerMessage struct {
@@ -14,6 +15,11 @@ type peerMessage struct {
 
 func readPeerMessage(conn net.Conn) (peerMessage, error) {
 	var msg peerMessage
+
+	if err := setPeerDeadline(conn); err != nil {
+		return msg, fmt.Errorf("failed to set peer read deadline: %w", err)
+	}
+	defer conn.SetDeadline(time.Time{})
 
 	for { // for loop is to handle the keep alive message since we need to skip them and wait for next message
 		lengthBuf := make([]byte, 4)
@@ -79,6 +85,11 @@ func buildInterestedMessage() []byte {
 func sendInterested(conn net.Conn) error {
 	msg := buildInterestedMessage()
 
+	if err := setPeerDeadline(conn); err != nil {
+		return fmt.Errorf("failed to set peer write deadline: %w", err)
+	}
+	defer conn.SetDeadline(time.Time{})
+
 	n, err := conn.Write(msg)
 	if err != nil {
 		return fmt.Errorf("failed to send interested message: %w", err)
@@ -115,6 +126,12 @@ func buildRequestMsg(index, begin, length int) []byte {
 
 func requestBlock(conn net.Conn, pieceIndex, begin, length int) error {
 	msg := buildRequestMsg(pieceIndex, begin, length)
+
+	if err := setPeerDeadline(conn); err != nil {
+		return fmt.Errorf("failed to set peer write deadline: %w", err)
+	}
+	defer conn.SetDeadline(time.Time{})
+
 	n, err := conn.Write(msg)
 	if err != nil {
 		return fmt.Errorf("failed to request block from peer: %w", err)
@@ -124,4 +141,8 @@ func requestBlock(conn net.Conn, pieceIndex, begin, length int) error {
 	}
 
 	return nil
+}
+
+func setPeerDeadline(conn net.Conn) error {
+	return conn.SetDeadline(time.Now().Add(peerIOTimeout))
 }

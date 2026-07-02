@@ -23,6 +23,9 @@ Current progress:
 - Full-file downloads are implemented
 - The `download` command can download all pieces, verify each piece hash, assemble the file, and write it to disk
 - Multi-peer downloading is implemented with worker-style piece scheduling
+- Failed piece downloads are retried and requeued with a retry limit
+- Failed peer workers can be replaced with unused peers from the tracker response
+- Peer connection, handshake, read, and write operations use deadlines to avoid hanging forever on unresponsive peers
 - Piece downloads currently use a small pipelined request window
 - Local Go tests cover decoder behavior, torrent metadata extraction, tracker parsing, and handshake helpers
 - More BitTorrent features still need to be added
@@ -105,6 +108,8 @@ go run ./app download -o /tmp/test.txt sample.torrent
 
 This downloads all pieces, verifies each piece hash, reassembles the file in memory, and writes the completed file to the path passed after `-o`.
 
+The full-file downloader uses multiple peer workers. If a piece download fails, the piece is requeued and retried up to a fixed retry limit. If a peer worker exits, the scheduler can replace it with another unused peer from the tracker response.
+
 ## Run tests
 
 Local tests are available so the decoder can be validated without relying on Codecrafters' hosted tests.
@@ -137,5 +142,6 @@ This is an active learning project, so the codebase will continue to change as m
 
 Current limitations:
 - `download_piece` is still useful as a simpler single-piece debugging path
-- Multi-peer downloading is in place, but retry/requeue behavior still needs hardening for failure cases
+- Piece scheduling is not yet bitfield-aware, so a worker can still pick up a piece its peer does not have
+- Peer discovery currently uses one tracker response snapshot instead of periodically refreshing the peer list
 - More protocol features, including magnet link support, still need to be added

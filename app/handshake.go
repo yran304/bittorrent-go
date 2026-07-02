@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
 
 const bittorrentProtocol = "BitTorrent protocol"
+
+const (
+	peerDialTimeout = 5 * time.Second
+	peerIOTimeout   = 10 * time.Second
+)
 
 func buildHandshake(infoHash [20]byte, localPeerID [20]byte) []byte {
 	message := make([]byte, 0, 68)
@@ -63,9 +69,15 @@ func connectAndHandshake(infoHash [20]byte, peerAddr string) (net.Conn, [20]byte
 
 	handshakeMsg := buildHandshake(infoHash, localPeerID)
 
-	conn, err := net.Dial("tcp", peerAddr)
+	conn, err := net.DialTimeout("tcp", peerAddr, peerDialTimeout)
 	if err != nil {
 		return nil, remotePeerID, fmt.Errorf("failed to connect to peer: %w", err)
+	}
+
+	err = conn.SetDeadline(time.Now().Add(peerIOTimeout))
+	if err != nil {
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to set handshake deadline: %w", err)
 	}
 
 	n, err := conn.Write(handshakeMsg)
@@ -83,6 +95,12 @@ func connectAndHandshake(infoHash [20]byte, peerAddr string) (net.Conn, [20]byte
 	if err != nil {
 		conn.Close()
 		return nil, remotePeerID, fmt.Errorf("failed to read handshake response: %w", err)
+	}
+
+	err = conn.SetDeadline(time.Time{})
+	if err != nil {
+		conn.Close()
+		return nil, remotePeerID, fmt.Errorf("failed to clear handshake deadline: %w", err)
 	}
 
 	remotePeerID, err = parseHandshakeResponse(resp, infoHash)
