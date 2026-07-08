@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	maxPeerWorkers  = 5
-	maxPieceRetries = 3
+	maxPeerWorkers   = 5
+	maxPieceAttempts = 3
 )
 
 type pieceResult struct {
@@ -92,7 +92,8 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 	}
 
 	fileData := make([]byte, meta.Length)
-	jobs := make(chan int, len(meta.PieceHashes))
+	scheduler := newPieceScheduler(len(meta.PieceHashes))
+
 	results := make(chan pieceResult, len(meta.PieceHashes))
 	workerDone := make(chan error, workerLimit)
 	nextPeerIndex := 0
@@ -119,7 +120,12 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 			}
 			defer conn.Close()
 
-			for pieceIndex := range jobs {
+			for {
+				pieceIndex, ok := scheduler.nextPieceForPeer(bitfield)
+				if !ok {
+					return
+				}
+
 				pieceData, err := downloadPieceFromPeer(conn, bitfield, meta, pieceIndex)
 				results <- pieceResult{
 					index: pieceIndex,
@@ -127,7 +133,6 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 					err:   err,
 				}
 				if err != nil {
-					workerErr = err
 					return
 				}
 			}
@@ -139,47 +144,57 @@ func downloadFile(meta torrentMeta) ([]byte, error) {
 	for activeWorkers < workerLimit && startNextWorker() {
 	}
 
-	for pieceIndex := 0; pieceIndex < len(meta.PieceHashes); pieceIndex++ {
-		jobs <- pieceIndex
+	var lastErr error
+
+	processResult := func(result pieceResult) error {
+		if result.err != nil {
+			lastErr = result.err
+
+			if err := scheduler.markAttemptFailed(result.index); err != nil {
+				return fmt.Errorf("%w: %v", err, result.err)
+			}
+
+			return nil
+		}
+
+		begin := result.index * meta.PieceLength
+		copy(fileData[begin:], result.data)
+
+		if err := scheduler.markComplete(result.index); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
-	completedPieces := 0
-	pieceRetries := make([]int, len(meta.PieceHashes))
-	pieceCompleted := make([]bool, len(meta.PieceHashes))
-	var lastErr error
-	defer close(jobs)
-
-	for completedPieces < len(meta.PieceHashes) {
+	for !scheduler.isComplete() {
 		select {
 		case result := <-results:
-			if pieceCompleted[result.index] {
-				continue
+			if err := processResult(result); err != nil {
+				return nil, err
 			}
-
-			if result.err != nil {
-				lastErr = result.err
-				pieceRetries[result.index]++
-				if pieceRetries[result.index] > maxPieceRetries {
-					return nil, fmt.Errorf("piece %d failed after %d retries: %w", result.index, maxPieceRetries, result.err)
-				}
-
-				jobs <- result.index
-				continue
-			}
-
-			begin := result.index * meta.PieceLength
-			copy(fileData[begin:], result.data)
-			pieceCompleted[result.index] = true
-			completedPieces++
 
 		case err := <-workerDone:
 			activeWorkers--
 			if err != nil {
 				lastErr = err
 			}
-			for activeWorkers < workerLimit && completedPieces < len(meta.PieceHashes) && startNextWorker() {
+
+		drainResults: // Label for the loop below; belongs to the workerDone case, not a new case or default behavior.
+			for {
+				select {
+				case result := <-results:
+					if err := processResult(result); err != nil {
+						return nil, err
+					}
+				default:
+					break drainResults
+				}
 			}
-			if activeWorkers == 0 && completedPieces < len(meta.PieceHashes) {
+
+			for activeWorkers < workerLimit && !scheduler.isComplete() && startNextWorker() {
+			}
+			if activeWorkers == 0 && !scheduler.isComplete() {
 				if lastErr != nil {
 					return nil, fmt.Errorf("all peer workers stopped before completing the download: %w", lastErr)
 				}
